@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dharam Kaanta - Test</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-8">
+  <div id="root"></div>
+  
+  <script type="text/babel">
+    function App() {
+      const [count, setCount] = React.useState(0);
+      return (
+        <div className="max-w-2xl mx-auto bg-white p-8 rounded-lg shadow-md">
+          <h1 className="text-3xl font-bold text-green-700 mb-4">✅ Dharam Kaanta Test Page</h1>
+          <p className="text-gray-600 mb-4">If you see this, the browser can run React + Tailwind!</p>
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+            <p className="font-medium">React is working!</p>
+            <p>Count: {count}</p>
+            <button 
+              onClick={() => setCount(c => c + 1)}
+              className="mt-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+            >
+              Increment
+            </button>
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <p className="font-medium">Your Vite app should work at:</p>
+            <code className="text-sm">http://localhost:5173/TL/</code>
+          </div>
+        </div>
+      );
+    }
+    
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
