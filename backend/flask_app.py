@@ -1,5 +1,20 @@
 from flask import Flask, request, jsonify, send_file, Response
 from flask_cors import CORS
+import os
+import uuid
+import json
+import base64
+from datetime import datetime, date
+from io import BytesIO
+
+# PostgreSQL support
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    USE_POSTGRES = True
+except ImportError:
+    USE_POSTGRES = False
+
 import sqlite3
 import uuid
 import json
@@ -10,41 +25,87 @@ from io import BytesIO
 app = Flask(__name__)
 CORS(app, origins=["https://prashant0731.github.io"])
 
-DB_PATH = "/data/dharam_kaanta.db"
+# Database configuration - Use Supabase PostgreSQL if available, fallback to SQLite
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if DATABASE_URL and USE_POSTGRES:
+    # Use Supabase PostgreSQL
+    DB_TYPE = "postgres"
+    DB_PATH = None
+else:
+    # Fallback to SQLite for local development
+    DB_TYPE = "sqlite"
+    DB_PATH = os.getenv("DB_PATH", "dharam_kaanta.db")
+
+def get_db():
+    """Get database connection - PostgreSQL or SQLite"""
+    if DB_TYPE == "postgres":
+        conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+        conn.autocommit = True
+        return conn
+    else:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        return conn
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS entries (
-            id TEXT PRIMARY KEY,
-            sno INTEGER NOT NULL,
-            tyre_type TEXT DEFAULT 'Radial',
-            vehicle TEXT,
-            tare TEXT,
-            gross TEXT,
-            net REAL DEFAULT 0,
-            money REAL DEFAULT 0,
-            vehicle_photo TEXT,
-            gross_photo TEXT,
-            saved INTEGER DEFAULT 0,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
+    """Initialize database tables - works for both PostgreSQL and SQLite"""
+    conn = get_db()
+    cursor = conn.cursor()
     
-    # Migration: Add tyre_type column if it doesn't exist
-    try:
-        conn.execute("ALTER TABLE entries ADD COLUMN tyre_type TEXT DEFAULT 'Radial'")
-    except sqlite3.OperationalError:
-        pass  # Column already exists
+    if DB_TYPE == "postgres":
+        # PostgreSQL syntax
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS entries (
+                id TEXT PRIMARY KEY,
+                sno INTEGER NOT NULL,
+                tyre_type TEXT DEFAULT 'Radial',
+                vehicle TEXT,
+                tare TEXT,
+                gross TEXT,
+                net REAL DEFAULT 0,
+                money REAL DEFAULT 0,
+                vehicle_photo TEXT,
+                gross_photo TEXT,
+                saved BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Migration: Add tyre_type column if it doesn't exist
+        try:
+            cursor.execute("ALTER TABLE entries ADD COLUMN IF NOT EXISTS tyre_type TEXT DEFAULT 'Radial'")
+        except Exception:
+            pass  # Column already exists
+    else:
+        # SQLite syntax
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS entries (
+                id TEXT PRIMARY KEY,
+                sno INTEGER NOT NULL,
+                tyre_type TEXT DEFAULT 'Radial',
+                vehicle TEXT,
+                tare TEXT,
+                gross TEXT,
+                net REAL DEFAULT 0,
+                money REAL DEFAULT 0,
+                vehicle_photo TEXT,
+                gross_photo TEXT,
+                saved INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Migration: Add tyre_type column if it doesn't exist
+        try:
+            cursor.execute("ALTER TABLE entries ADD COLUMN tyre_type TEXT DEFAULT 'Radial'")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
     
     conn.commit()
     conn.close()
-
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
 
 def calc_net_money(tare, gross):
     t = float(tare) if tare else 0
@@ -54,29 +115,50 @@ def calc_net_money(tare, gross):
     return net, money
 
 def row_to_dict(row):
+    if DB_TYPE == "postgres":
+        # RealDictCursor already returns dict-like object
+        d = dict(row)
+    else:
+        d = {
+            "id": row["id"],
+            "sno": row["sno"],
+            "tyre_type": row["tyre_type"] or "Radial",
+            "vehicle": row["vehicle"],
+            "tare": row["tare"],
+            "gross": row["gross"],
+            "net": row["net"],
+            "money": row["money"],
+            "vehicle_photo": row["vehicle_photo"],
+            "gross_photo": row["gross_photo"],
+            "saved": bool(row["saved"]),
+            "createdAt": row["created_at"],
+            "updatedAt": row["updated_at"],
+        }
+    # Ensure consistent field names
     return {
-        "id": row["id"],
-        "sno": row["sno"],
-        "tyreType": row["tyre_type"] or "Radial",
-        "vehicle": row["vehicle"],
-        "tare": row["tare"],
-        "gross": row["gross"],
-        "net": row["net"],
-        "money": row["money"],
-        "vehiclePhoto": row["vehicle_photo"],
-        "grossPhoto": row["gross_photo"],
-        "saved": bool(row["saved"]),
-        "createdAt": row["created_at"],
-        "updatedAt": row["updated_at"],
+        "id": d.get("id"),
+        "sno": d.get("sno"),
+        "tyreType": d.get("tyre_type") or d.get("tyreType") or "Radial",
+        "vehicle": d.get("vehicle"),
+        "tare": d.get("tare"),
+        "gross": d.get("gross"),
+        "net": d.get("net"),
+        "money": d.get("money"),
+        "vehiclePhoto": d.get("vehicle_photo") or d.get("vehiclePhoto"),
+        "grossPhoto": d.get("gross_photo") or d.get("grossPhoto"),
+        "saved": d.get("saved"),
+        "createdAt": d.get("createdAt") or d.get("created_at"),
+        "updatedAt": d.get("updatedAt") or d.get("updated_at"),
     }
 
+# ... rest of the file remains the same
 @app.route("/")
 def root():
     return jsonify({"name": "Dharam Kaanta API", "version": "1.0.0", "docs": "/docs"})
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok"})
+    return jsonify({"status": "ok", "db_type": DB_TYPE})
 
 @app.route("/api/v1/entries", methods=["GET"])
 def get_entries():
@@ -87,30 +169,36 @@ def get_entries():
     date_to = request.args.get("date_to")
     
     conn = get_db()
+    cursor = conn.cursor()
+    
     query = "SELECT * FROM entries WHERE 1=1"
     params = []
     
     if search:
-        query += " AND vehicle LIKE ?"
+        query += " AND vehicle ILIKE %s"
         params.append(f"%{search}%")
     if date_from:
-        query += " AND created_at >= ?"
+        query += " AND created_at >= %s"
         params.append(date_from)
     if date_to:
-        query += " AND created_at <= ?"
+        query += " AND created_at <= %s"
         params.append(date_to)
     
-    query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+    query += " ORDER BY created_at DESC LIMIT %s OFFSET %s"
     params.extend([limit, skip])
     
-    rows = conn.execute(query, params).fetchall()
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
     conn.close()
     return jsonify([row_to_dict(r) for r in rows])
 
 @app.route("/api/v1/entries/<entry_id>", methods=["GET"])
 def get_entry(entry_id):
     conn = get_db()
-    row = conn.execute("SELECT * FROM entries WHERE id = ?", (entry_id,)).fetchone()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM entries WHERE id = %s", (entry_id,))
+    row = cursor.fetchone()
     conn.close()
     if not row:
         return jsonify({"error": "Entry not found"}), 404
@@ -124,14 +212,17 @@ def create_entry():
     now = datetime.now().isoformat()
     
     conn = get_db()
-    conn.execute("""
-        INSERT INTO entries (id, sno, vehicle, tare, gross, net, money, vehicle_photo, gross_photo, saved, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (entry_id, data["sno"], data.get("vehicle"), data.get("tare"), data.get("gross"),
-          net, money, data.get("vehiclePhoto"), data.get("grossPhoto"), 0, now, now))
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        INSERT INTO entries (id, sno, tyre_type, vehicle, tare, gross, net, money, vehicle_photo, gross_photo, saved, created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """, (entry_id, data["sno"], data.get("tyre_type", "Radial"), data.get("vehicle"), data.get("tare"), data.get("gross"),
+          net, money, data.get("vehiclePhoto"), data.get("grossPhoto"), False, now, now))
     conn.commit()
     
-    row = conn.execute("SELECT * FROM entries WHERE id = ?", (entry_id,)).fetchone()
+    cursor.execute("SELECT * FROM entries WHERE id = %s", (entry_id,))
+    row = cursor.fetchone()
     conn.close()
     return jsonify(row_to_dict(row)), 201
 
@@ -139,7 +230,8 @@ def create_entry():
 def update_entry(entry_id):
     data = request.get_json()
     conn = get_db()
-    existing = conn.execute("SELECT * FROM entries WHERE id = ?", (entry_id,)).fetchone()
+    cursor = conn.cursor()
+    existing = cursor.execute("SELECT * FROM entries WHERE id = %s", (entry_id,)).fetchone()
     if not existing:
         conn.close()
         return jsonify({"error": "Entry not found"}), 404
@@ -151,33 +243,35 @@ def update_entry(entry_id):
     
     update_fields = []
     params = []
-    for field in ["vehicle", "tare", "gross", "vehicle_photo", "gross_photo", "saved"]:
+    for field in ["tyre_type", "vehicle", "tare", "gross", "vehicle_photo", "gross_photo", "saved"]:
         if field in data:
-            update_fields.append(f"{field} = ?")
+            update_fields.append(f"{field} = %s")
             val = data[field]
             if field == "saved":
-                val = 1 if val else 0
+                val = val if DB_TYPE == "postgres" else (1 if val else 0)
             params.append(val)
     
-    update_fields.append("net = ?")
+    update_fields.append("net = %s")
     params.append(net)
-    update_fields.append("money = ?")
+    update_fields.append("money = %s")
     params.append(money)
-    update_fields.append("updated_at = ?")
+    update_fields.append("updated_at = %s")
     params.append(datetime.now().isoformat())
     params.append(entry_id)
     
-    conn.execute(f"UPDATE entries SET {', '.join(update_fields)} WHERE id = ?", params)
+    cursor.execute(f"UPDATE entries SET {', '.join(update_fields)} WHERE id = %s", params)
     conn.commit()
     
-    row = conn.execute("SELECT * FROM entries WHERE id = ?", (entry_id,)).fetchone()
+    cursor.execute("SELECT * FROM entries WHERE id = %s", (entry_id,))
+    row = cursor.fetchone()
     conn.close()
     return jsonify(row_to_dict(row))
 
 @app.route("/api/v1/entries/<entry_id>", methods=["DELETE"])
 def delete_entry(entry_id):
     conn = get_db()
-    conn.execute("DELETE FROM entries WHERE id = ?", (entry_id,))
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM entries WHERE id = %s", (entry_id,))
     conn.commit()
     conn.close()
     return jsonify({"message": "Entry deleted"})
@@ -189,30 +283,33 @@ def bulk_create():
     now = datetime.now().isoformat()
     
     conn = get_db()
+    cursor = conn.cursor()
     for entry in entries:
         net, money = calc_net_money(entry.get("tare"), entry.get("gross"))
         entry_id = str(uuid.uuid4())
-        conn.execute("""
-            INSERT INTO entries (id, sno, vehicle, tare, gross, net, money, vehicle_photo, gross_photo, saved, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (entry_id, entry["sno"], entry.get("vehicle"), entry.get("tare"), entry.get("gross"),
-              net, money, entry.get("vehiclePhoto"), entry.get("grossPhoto"), 0, now, now))
+        cursor.execute("""
+            INSERT INTO entries (id, sno, tyre_type, vehicle, tare, gross, net, money, vehicle_photo, gross_photo, saved, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (entry_id, entry["sno"], entry.get("tyre_type", "Radial"), entry.get("vehicle"), entry.get("tare"), entry.get("gross"),
+              net, money, entry.get("vehiclePhoto"), entry.get("grossPhoto"), False, now, now))
         created_ids.append(entry_id)
     conn.commit()
     
-    placeholders = ",".join("?" * len(created_ids))
-    rows = conn.execute(f"SELECT * FROM entries WHERE id IN ({placeholders})", created_ids).fetchall()
+    placeholders = ",".join(["%s"] * len(created_ids))
+    cursor.execute(f"SELECT * FROM entries WHERE id IN ({placeholders})", created_ids)
+    rows = cursor.fetchall()
     conn.close()
     return jsonify([row_to_dict(r) for r in rows])
 
 @app.route("/api/v1/stats", methods=["GET"])
 def get_stats():
     conn = get_db()
-    total = conn.execute("SELECT COUNT(*) FROM entries").fetchone()[0]
-    saved = conn.execute("SELECT COUNT(*) FROM entries WHERE saved = 1").fetchone()[0]
-    today = conn.execute("SELECT COUNT(*) FROM entries WHERE date(created_at) = date('now')").fetchone()[0]
-    total_weight = conn.execute("SELECT COALESCE(SUM(net), 0) FROM entries").fetchone()[0]
-    total_revenue = conn.execute("SELECT COALESCE(SUM(money), 0) FROM entries").fetchone()[0]
+    cursor = conn.cursor()
+    total = cursor.execute("SELECT COUNT(*) FROM entries").fetchone()[0]
+    saved = cursor.execute("SELECT COUNT(*) FROM entries WHERE saved = %s", (True if DB_TYPE == "postgres" else 1,)).fetchone()[0]
+    today = cursor.execute("SELECT COUNT(*) FROM entries WHERE DATE(created_at) = CURRENT_DATE").fetchone()[0]
+    total_weight = cursor.execute("SELECT COALESCE(SUM(net), 0) FROM entries").fetchone()[0]
+    total_revenue = cursor.execute("SELECT COALESCE(SUM(money), 0) FROM entries").fetchone()[0]
     conn.close()
     
     return jsonify({
@@ -229,21 +326,23 @@ def export_data():
     vehicle_filter = request.args.get("vehicle_filter")
     
     conn = get_db()
+    cursor = conn.cursor()
     query = "SELECT * FROM entries WHERE 1=1"
     params = []
     
     if vehicle_filter:
-        query += " AND vehicle LIKE ?"
+        query += " AND vehicle ILIKE %s"
         params.append(f"%{vehicle_filter}%")
     if date_from:
-        query += " AND created_at >= ?"
+        query += " AND created_at >= %s"
         params.append(date_from)
     if date_to:
-        query += " AND created_at <= ?"
+        query += " AND created_at <= %s"
         params.append(date_to)
     
     query += " ORDER BY created_at DESC"
-    entries = [row_to_dict(r) for r in conn.execute(query, params).fetchall()]
+    cursor.execute(query, params)
+    entries = [row_to_dict(r) for r in cursor.fetchall()]
     conn.close()
     
     if not entries:
@@ -271,7 +370,6 @@ def export_excel(entries, filename):
     ws = wb.active
     ws.title = "Entries"
     
-    # Add image columns
     headers = ['S.No', 'Tyre Type', 'Vehicle No.', 'Tare (kg)', 'Gross (kg)', 'Net (kg)', 
                'Amount', 'Vehicle Photo', 'Gross Photo', 'Status', 'Created At']
     
@@ -284,9 +382,8 @@ def export_excel(entries, filename):
         cell.fill = header_fill
         cell.alignment = Alignment(horizontal="center")
     
-    # Set column widths for images
-    ws.column_dimensions['H'].width = 18  # Vehicle Photo
-    ws.column_dimensions['I'].width = 18  # Gross Photo
+    ws.column_dimensions['H'].width = 18
+    ws.column_dimensions['I'].width = 18
     
     for row_idx, entry in enumerate(entries, 2):
         ws.cell(row=row_idx, column=1, value=row_idx - 1)
@@ -302,32 +399,29 @@ def export_excel(entries, filename):
         # Embed Vehicle Photo
         if entry.get("vehiclePhoto"):
             try:
-                # Decode base64
+                import base64
                 img_data = base64.b64decode(entry["vehiclePhoto"])
                 pil_img = PILImage.open(BytesIO(img_data))
                 
-                # Resize for Excel (max 100px width)
                 max_width = 100
                 if pil_img.width > max_width:
                     ratio = max_width / pil_img.width
                     new_height = int(pil_img.height * ratio)
                     pil_img = pil_img.resize((max_width, new_height), PILImage.Resampling.LANCZOS)
                 
-                # Save to bytes
                 img_buffer = BytesIO()
                 pil_img.save(img_buffer, format='PNG')
                 img_buffer.seek(0)
                 
-                # Add to Excel
                 xl_img = XLImage(img_buffer)
                 ws.add_image(xl_img, f'H{row_idx}')
-                ws.row_dimensions[row_idx].height = 75  # Set row height for image
+                ws.row_dimensions[row_idx].height = 75
             except Exception as e:
                 ws.cell(row=row_idx, column=8, value="Error loading image")
         
-        # Embed Gross Photo
         if entry.get("grossPhoto"):
             try:
+                import base64
                 img_data = base64.b64decode(entry["grossPhoto"])
                 pil_img = PILImage.open(BytesIO(img_data))
                 
@@ -346,18 +440,13 @@ def export_excel(entries, filename):
             except Exception as e:
                 ws.cell(row=row_idx, column=9, value="Error loading image")
         
-        # Status column
         ws.cell(row=row_idx, column=10, value="Saved" if entry["saved"] else "Draft")
         ws.cell(row=row_idx, column=11, value=entry["createdAt"] or "")
     
-    # Set column widths
     widths = [8, 14, 18, 12, 12, 12, 12, 18, 18, 12, 22]
     for i, width in enumerate(widths, 1):
         ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = width
     
-    # Style headers
-    header_font = Font(bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="17202A", end_color="17202A", fill_type="solid")
     for col in range(1, len(headers) + 1):
         cell = ws.cell(row=1, column=col)
         cell.font = Font(bold=True, color="FFFFFF")
@@ -387,8 +476,8 @@ def export_pdf(entries, filename):
     pdf.add_page()
     pdf.set_font('Helvetica', 'B', 7)
     
-    headers = ['S.No', 'Vehicle', 'Tare', 'Gross', 'Net', 'Rupees', 'V-Photo', 'G-Photo', 'Status', 'Created']
-    col_widths = [10, 35, 18, 18, 18, 18, 16, 16, 16, 30]
+    headers = ['S.No', 'Tyre Type', 'Vehicle', 'Tare', 'Gross', 'Net', 'Amount', 'V-Photo', 'G-Photo', 'Status', 'Created']
+    col_widths = [10, 22, 35, 18, 18, 18, 18, 16, 16, 16, 30]
     
     pdf.set_fill_color(23, 32, 42)
     pdf.set_text_color(255, 255, 255)
@@ -403,15 +492,16 @@ def export_pdf(entries, filename):
         pdf.set_fill_color(243, 245, 247) if fill else pdf.set_fill_color(255, 255, 255)
         
         pdf.cell(col_widths[0], 6, str(idx + 1), 1, 0, 'C', True)
-        pdf.cell(col_widths[1], 6, entry["vehicle"] or "-", 1, 0, 'L', True)
-        pdf.cell(col_widths[2], 6, entry["tare"] or "-", 1, 0, 'C', True)
-        pdf.cell(col_widths[3], 6, entry["gross"] or "-", 1, 0, 'C', True)
-        pdf.cell(col_widths[4], 6, str(entry["net"]) if entry["net"] else "-", 1, 0, 'C', True)
-        pdf.cell(col_widths[5], 6, f"{entry['money']:.2f}" if entry["money"] else "-", 1, 0, 'C', True)
-        pdf.cell(col_widths[6], 6, "Yes" if entry["vehiclePhoto"] else "No", 1, 0, 'C', True)
-        pdf.cell(col_widths[7], 6, "Yes" if entry["grossPhoto"] else "No", 1, 0, 'C', True)
-        pdf.cell(col_widths[8], 6, "Saved" if entry["saved"] else "Draft", 1, 0, 'C', True)
-        pdf.cell(col_widths[9], 6, entry["createdAt"] or "-", 1, 0, 'C', True)
+        pdf.cell(col_widths[1], 6, entry.get("tyreType") or "-", 1, 0, 'L', True)
+        pdf.cell(col_widths[2], 6, entry["vehicle"] or "-", 1, 0, 'L', True)
+        pdf.cell(col_widths[3], 6, entry["tare"] or "-", 1, 0, 'C', True)
+        pdf.cell(col_widths[4], 6, entry["gross"] or "-", 1, 0, 'C', True)
+        pdf.cell(col_widths[5], 6, str(entry["net"]) if entry["net"] else "-", 1, 0, 'C', True)
+        pdf.cell(col_widths[6], 6, f"{entry['money']:.2f}" if entry["money"] else "-", 1, 0, 'C', True)
+        pdf.cell(col_widths[7], 6, "Yes" if entry.get("vehiclePhoto") else "No", 1, 0, 'C', True)
+        pdf.cell(col_widths[8], 6, "Yes" if entry.get("grossPhoto") else "No", 1, 0, 'C', True)
+        pdf.cell(col_widths[9], 6, "Saved" if entry["saved"] else "Draft", 1, 0, 'C', True)
+        pdf.cell(col_widths[10], 6, entry.get("createdAt") or "-", 1, 0, 'C', True)
         pdf.ln()
         fill = not fill
     
@@ -441,12 +531,12 @@ def export_word(entries, filename):
     run = sub.add_run(f'Generated: {datetime.now().strftime("%d-%m-%Y %H:%M")} | Total Entries: {len(entries)}')
     run.font.size = Pt(10)
     
-    table = doc.add_table(rows=1, cols=10)
+    table = doc.add_table(rows=1, cols=11)
     table.style = 'Table Grid'
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     
-    headers = ['S.No', 'Vehicle No.', 'Tare (kg)', 'Gross (kg)', 'Net (kg)', 
-               'Rupees', 'Vehicle Photo', 'Gross Photo', 'Status', 'Created At']
+    headers = ['S.No', 'Tyre Type', 'Vehicle No.', 'Tare (kg)', 'Gross (kg)', 'Net (kg)', 
+               'Amount', 'Vehicle Photo', 'Gross Photo', 'Status', 'Created At']
     for i, header in enumerate(headers):
         table.rows[0].cells[i].text = header
         for p in table.rows[0].cells[i].paragraphs:
@@ -458,15 +548,16 @@ def export_word(entries, filename):
     for idx, entry in enumerate(entries):
         row = table.add_row().cells
         row[0].text = str(idx + 1)
-        row[1].text = entry["vehicle"] or "-"
-        row[2].text = entry["tare"] or "-"
-        row[3].text = entry["gross"] or "-"
-        row[4].text = str(entry["net"]) if entry["net"] else "-"
-        row[5].text = f"{entry['money']:.2f}" if entry["money"] else "-"
-        row[6].text = "Yes" if entry["vehiclePhoto"] else "No"
-        row[7].text = "Yes" if entry["grossPhoto"] else "No"
-        row[8].text = "Saved" if entry["saved"] else "Draft"
-        row[9].text = entry["createdAt"] or "-"
+        row[1].text = entry.get("tyreType") or "-"
+        row[2].text = entry["vehicle"] or "-"
+        row[3].text = entry["tare"] or "-"
+        row[4].text = entry["gross"] or "-"
+        row[5].text = str(entry["net"]) if entry["net"] else "-"
+        row[6].text = f"{entry['money']:.2f}" if entry["money"] else "-"
+        row[7].text = "Yes" if entry.get("vehiclePhoto") else "No"
+        row[8].text = "Yes" if entry.get("grossPhoto") else "No"
+        row[9].text = "Saved" if entry["saved"] else "Draft"
+        row[10].text = entry.get("createdAt") or "-"
         for cell in row:
             for p in cell.paragraphs:
                 p.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -482,5 +573,5 @@ def export_word(entries, filename):
 
 if __name__ == "__main__":
     init_db()
-    print("Starting Dharam Kaanta API on http://localhost:8000")
+    print(f"Starting Dharam Kaanta API on http://localhost:8000 (DB: {DB_TYPE})")
     app.run(host="0.0.0.0", port=8000, debug=True)
