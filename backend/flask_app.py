@@ -4,6 +4,7 @@ import os
 import uuid
 import json
 import base64
+import sqlite3
 from datetime import datetime, date
 from io import BytesIO
 
@@ -24,10 +25,8 @@ except ImportError:
     get_sheets_sync = None
     init_sheets_sync = None
 
-import sqlite3
 import uuid
 import json
-import base64
 from datetime import datetime, date
 from io import BytesIO
 
