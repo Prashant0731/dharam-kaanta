@@ -333,22 +333,22 @@ export const EntryPage: FC = () => {
         )}
       </div>
 
-      {/* Table Container - Fixed Layout */}
+      {/* Table Container - Responsive */}
       <div className="px-4 pb-4 overflow-hidden" style={{maxHeight: 'calc(100vh - 200px)'}}>
         <div className="overflow-x-auto" style={{height: 'calc(100vh - 200px)', overflowY: 'auto'}}>
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700" ref={tableRef}>
             <thead className="bg-gray-900 text-white sticky top-0 z-20">
               <tr>
                 <th className="px-2 py-2 text-left text-xs font-medium uppercase tracking-wider sticky left-0 bg-gray-900 z-30 w-8 min-w-[40px]">#</th>
-                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider sticky left-0 bg-gray-900 z-20 min-w-[140px] max-w-[180px]">Tyre Type</th>
-                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider sticky left-0 bg-gray-900 z-20 min-w-[140px] max-w-[180px]">Vehicle No.</th>
+                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider sticky left-0 bg-gray-900 z-20 min-w-[120px]">Tyre Type</th>
+                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider sticky left-0 bg-gray-900 z-20 min-w-[120px]">Vehicle No.</th>
                 <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider w-20 min-w-[80px]">Tare (kg)</th>
                 <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider w-20 min-w-[80px]">Gross (kg)</th>
                 <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider text-green-300 w-20 min-w-[80px]">Net (kg)</th>
                 <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider text-red-300 w-20 min-w-[80px]">Amount</th>
-                <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider w-28 min-w-[112px]">Vehicle Photo</th>
-                <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider w-28 min-w-[112px]">Gross Photo</th>
-                <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider w-32 min-w-[128px]">Action</th>
+                <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider w-24 min-w-[96px]">Vehicle Photo</th>
+                <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider w-24 min-w-[96px]">Gross Photo</th>
+                <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider w-28 min-w-[112px]">Action</th>
               </tr>
             </thead>
             <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">

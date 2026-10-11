@@ -112,7 +112,8 @@ const App: FC = () => {
         </aside>
 
         {/* Main content */}
-        <main className="flex-1 lg:ml-64 min-h-screen">
+        <main className="flex-1 lg:ml-64 min-h-screen w-full lg:w-auto">
+          {/* Mobile menu button */}
           <button 
             className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700"
             onClick={() => setSidebarOpen(true)}

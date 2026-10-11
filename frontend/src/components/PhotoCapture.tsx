@@ -18,7 +18,8 @@ export const PhotoCapture: FC<PhotoCaptureProps> = ({
 }) => {
   const [preview, setPreview] = useState<string | null>(value || null);
   const [compressing, setCompressing] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = async (file: File) => {
     const validation = validateImageFile(file);
@@ -40,35 +41,46 @@ export const PhotoCapture: FC<PhotoCaptureProps> = ({
     }
   };
 
-  const triggerFileInput = () => fileInputRef.current?.click();
+  const triggerCameraInput = () => cameraInputRef.current?.click();
+  const triggerGalleryInput = () => galleryInputRef.current?.click();
 
   const clearPhoto = () => {
     setPreview(null);
     onChange('');
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+    if (galleryInputRef.current) galleryInputRef.current.value = '';
   };
 
   return (
     <div className="flex flex-col items-center gap-2">
+      {/* Camera input */}
       <input
-        ref={fileInputRef}
+        ref={cameraInputRef}
         type="file"
         accept="image/*"
         capture="environment"
         hidden
         onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
       />
+      {/* Gallery input */}
+      <input
+        ref={galleryInputRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
+      />
       
       <div 
         className={clsx(
-          'relative w-24 h-24 sm:w-28 sm:h-28 rounded-lg border-2 border-dashed',
+          'relative w-20 h-20 sm:w-24 sm:h-24 md:w-24 md:h-24 lg:w-28 lg:h-28 rounded-lg border-2 border-dashed',
           'flex items-center justify-center overflow-hidden cursor-pointer',
           'bg-gray-50 dark:bg-gray-800',
           'border-gray-300 dark:border-gray-600',
           'hover:border-green-400 dark:hover:border-green-500',
           'transition-colors'
         )}
-        onClick={triggerFileInput}
+        onClick={triggerCameraInput}
       >
         {preview ? (
           <>
@@ -95,7 +107,7 @@ export const PhotoCapture: FC<PhotoCaptureProps> = ({
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={(e) => { e.stopPropagation(); triggerFileInput(); }}
+                onClick={(e) => { e.stopPropagation(); triggerCameraInput(); }}
                 className="p-2 bg-white dark:bg-gray-700 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
                 aria-label="Open camera"
               >
@@ -103,7 +115,7 @@ export const PhotoCapture: FC<PhotoCaptureProps> = ({
               </button>
               <button
                 type="button"
-                onClick={(e) => { e.stopPropagation(); triggerFileInput(); }}
+                onClick={(e) => { e.stopPropagation(); triggerGalleryInput(); }}
                 className="p-2 bg-white dark:bg-gray-700 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
                 aria-label="Open gallery"
               >
