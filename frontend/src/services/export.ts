@@ -5,16 +5,17 @@ import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, Width
 import { saveAs } from 'file-saver';
 import { WeighbridgeEntry } from '../types';
 
-export function exportToExcel(entries: WeighbridgeEntry[], filename = 'dharam-kaanta-entries') {
+// Export to Excel without base64 columns (too large for cells)
+export function exportToExcelWithPhotos(entries: WeighbridgeEntry[], filename = 'dharam-kaanta-entries') {
+  // Prepare data without base64 columns (too large for cells)
   const data = entries.map((e, i) => ({
     'S.No': i + 1,
+    'Tyre Type': e.tyreType || '',
     'Vehicle No.': e.vehicle,
     'Tare (kg)': e.tare,
     'Gross (kg)': e.gross,
-    'Net (kg)': e.net,
-    'Amount': e.money,
-    'Vehicle Photo (Base64)': e.vehiclePhoto || '',
-    'Gross Photo (Base64)': e.grossPhoto || '',
+    'Net (kg)': e.net > 0 ? e.net : '',
+    'Amount': e.money > 0 ? e.money.toFixed(2) : '',
     'Vehicle Photo': e.vehiclePhoto ? 'Yes' : 'No',
     'Gross Photo': e.grossPhoto ? 'Yes' : 'No',
     'Status': e.saved ? 'Saved' : 'Draft',
@@ -27,13 +28,14 @@ export function exportToExcel(entries: WeighbridgeEntry[], filename = 'dharam-ka
   
   // Auto-width columns
   const cols = [
-    { wch: 6 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, 
-    { wch: 12 }, { wch: 12 }, { wch: 50 }, { wch: 50 }, 
-    { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 22 }
+    { wch: 6 }, { wch: 14 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, 
+    { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 22 }
   ];
   ws['!cols'] = cols;
 
-  XLSX.writeFile(wb, `${filename}.xlsx`);
+  // Write to array buffer and save
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  saveAs(new Blob([wbout], { type: 'application/octet-stream' }), `${filename}.xlsx`);
 }
 
 export function exportToPDF(entries: WeighbridgeEntry[], filename = 'dharam-kaanta-entries') {
@@ -51,11 +53,12 @@ export function exportToPDF(entries: WeighbridgeEntry[], filename = 'dharam-kaan
 
   const tableData = entries.map((e, i) => [
     (i + 1).toString(),
+    e.tyreType || '',
     e.vehicle,
     e.tare,
     e.gross,
-    e.net.toString(),
-    e.money.toFixed(2),
+    e.net > 0 ? e.net.toString() : '',
+    e.money > 0 ? e.money.toFixed(2) : '',
     e.vehiclePhoto ? 'Yes' : 'No',
     e.grossPhoto ? 'Yes' : 'No',
     e.saved ? 'Saved' : 'Draft',
@@ -63,7 +66,7 @@ export function exportToPDF(entries: WeighbridgeEntry[], filename = 'dharam-kaan
   ]);
 
   autoTable(doc, {
-    head: [['S.No', 'Vehicle No.', 'Tare (kg)', 'Gross (kg)', 'Net (kg)', 'Rupees', 'Veh Photo', 'Gross Photo', 'Status', 'Created At']],
+    head: [['S.No', 'Tyre Type', 'Vehicle No.', 'Tare (kg)', 'Gross (kg)', 'Net (kg)', 'Amount', 'Veh Photo', 'Gross Photo', 'Status', 'Created At']],
     body: tableData,
     startY: 35,
     styles: { fontSize: 7, cellPadding: 2 },
@@ -71,15 +74,16 @@ export function exportToPDF(entries: WeighbridgeEntry[], filename = 'dharam-kaan
     alternateRowStyles: { fillColor: [243, 245, 247] },
     columnStyles: {
       0: { cellWidth: 10 },
-      1: { cellWidth: 35 },
-      2: { cellWidth: 20 },
+      1: { cellWidth: 20 },
+      2: { cellWidth: 35 },
       3: { cellWidth: 20 },
       4: { cellWidth: 20 },
       5: { cellWidth: 20 },
       6: { cellWidth: 20 },
       7: { cellWidth: 20 },
-      8: { cellWidth: 18 },
-      9: { cellWidth: 35 },
+      8: { cellWidth: 20 },
+      9: { cellWidth: 18 },
+      10: { cellWidth: 35 },
     },
     margin: { left: 10, right: 10 },
   });
@@ -91,8 +95,8 @@ export async function exportToWord(entries: WeighbridgeEntry[], filename = 'dhar
   const tableRows: TableRow[] = [
     new TableRow({
       children: [
-        'S.No', 'Vehicle No.', 'Tare (kg)', 'Gross (kg)', 'Net (kg)', 
-        'Rupees', 'Vehicle Photo', 'Gross Photo', 'Status', 'Created At'
+        'S.No', 'Tyre Type', 'Vehicle No.', 'Tare (kg)', 'Gross (kg)', 
+        'Net (kg)', 'Amount', 'Vehicle Photo', 'Gross Photo', 'Status', 'Created At'
       ].map(text => new TableCell({
         children: [new Paragraph({ children: [new TextRun({ text, bold: true, size: 18 })] })],
         shading: { fill: '17202A' },
@@ -104,11 +108,12 @@ export async function exportToWord(entries: WeighbridgeEntry[], filename = 'dhar
     tableRows.push(new TableRow({
       children: [
         (i + 1).toString(),
+        e.tyreType || '',
         e.vehicle,
         e.tare,
         e.gross,
-        e.net.toString(),
-        e.money.toFixed(2),
+        e.net > 0 ? e.net.toString() : '',
+        e.money > 0 ? e.money.toFixed(2) : '',
         e.vehiclePhoto ? 'Yes' : 'No',
         e.grossPhoto ? 'Yes' : 'No',
         e.saved ? 'Saved' : 'Draft',
@@ -150,7 +155,7 @@ export function exportAll(entries: WeighbridgeEntry[], format: 'excel' | 'pdf' |
   
   switch (format) {
     case 'excel':
-      exportToExcel(entries, filename);
+      exportToExcelWithPhotos(entries, filename);
       break;
     case 'pdf':
       exportToPDF(entries, filename);

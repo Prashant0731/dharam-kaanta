@@ -12,6 +12,10 @@ permissions:
   pages: write
   id-token: write
 
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -33,6 +37,8 @@ jobs:
       - name: Build
         working-directory: ./frontend
         run: npm run build
+        env:
+          VITE_API_URL: https://${{ secrets.RENDER_BACKEND_URL }}/api/v1
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

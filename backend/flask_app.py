@@ -3,6 +3,7 @@ from flask_cors import CORS
 import sqlite3
 import uuid
 import json
+import base64
 from datetime import datetime, date
 from io import BytesIO
 
@@ -17,6 +18,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS entries (
             id TEXT PRIMARY KEY,
             sno INTEGER NOT NULL,
+            tyre_type TEXT DEFAULT 'Radial',
             vehicle TEXT,
             tare TEXT,
             gross TEXT,
@@ -29,6 +31,13 @@ def init_db():
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    
+    # Migration: Add tyre_type column if it doesn't exist
+    try:
+        conn.execute("ALTER TABLE entries ADD COLUMN tyre_type TEXT DEFAULT 'Radial'")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
     conn.commit()
     conn.close()
 
@@ -48,6 +57,7 @@ def row_to_dict(row):
     return {
         "id": row["id"],
         "sno": row["sno"],
+        "tyreType": row["tyre_type"] or "Radial",
         "vehicle": row["vehicle"],
         "tare": row["tare"],
         "gross": row["gross"],
@@ -254,13 +264,16 @@ def export_data():
 def export_excel(entries, filename):
     from openpyxl import Workbook
     from openpyxl.styles import Font, Alignment, PatternFill
+    from openpyxl.drawing.image import Image as XLImage
+    from PIL import Image as PILImage
     
     wb = Workbook()
     ws = wb.active
     ws.title = "Entries"
     
-    headers = ['S.No', 'Vehicle No.', 'Tare (kg)', 'Gross (kg)', 'Net (kg)', 
-               'Rupees', 'Vehicle Photo', 'Gross Photo', 'Status', 'Created At']
+    # Add image columns
+    headers = ['S.No', 'Tyre Type', 'Vehicle No.', 'Tare (kg)', 'Gross (kg)', 'Net (kg)', 
+               'Amount', 'Vehicle Photo', 'Gross Photo', 'Status', 'Created At']
     
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill(start_color="17202A", end_color="17202A", fill_type="solid")
@@ -271,20 +284,85 @@ def export_excel(entries, filename):
         cell.fill = header_fill
         cell.alignment = Alignment(horizontal="center")
     
+    # Set column widths for images
+    ws.column_dimensions['H'].width = 18  # Vehicle Photo
+    ws.column_dimensions['I'].width = 18  # Gross Photo
+    
     for row_idx, entry in enumerate(entries, 2):
         ws.cell(row=row_idx, column=1, value=row_idx - 1)
-        ws.cell(row=row_idx, column=2, value=entry["vehicle"] or "")
-        ws.cell(row=row_idx, column=3, value=entry["tare"] or "")
-        ws.cell(row=row_idx, column=4, value=entry["gross"] or "")
-        ws.cell(row=row_idx, column=5, value=entry["net"] if entry["net"] else "")
-        ws.cell(row=row_idx, column=6, value=round(entry["money"], 2) if entry["money"] else "")
-        ws.cell(row=row_idx, column=7, value="Yes" if entry["vehiclePhoto"] else "No")
-        ws.cell(row=row_idx, column=8, value="Yes" if entry["grossPhoto"] else "No")
-        ws.cell(row=row_idx, column=9, value="Saved" if entry["saved"] else "Draft")
-        ws.cell(row=row_idx, column=10, value=entry["createdAt"] or "")
+        ws.cell(row=row_idx, column=2, value=entry.get("tyreType") or "")
+        ws.cell(row=row_idx, column=3, value=entry["vehicle"] or "")
+        ws.cell(row=row_idx, column=4, value=entry["tare"] or "")
+        ws.cell(row=row_idx, column=5, value=entry["gross"] or "")
+        ws.cell(row=row_idx, column=6, value=entry["net"] if entry["net"] else "")
+        ws.cell(row=row_idx, column=7, value=round(entry["money"], 2) if entry["money"] else "")
+        ws.cell(row=row_idx, column=10, value="Saved" if entry["saved"] else "Draft")
+        ws.cell(row=row_idx, column=11, value=entry["createdAt"] or "")
+        
+        # Embed Vehicle Photo
+        if entry.get("vehiclePhoto"):
+            try:
+                # Decode base64
+                img_data = base64.b64decode(entry["vehiclePhoto"])
+                pil_img = PILImage.open(BytesIO(img_data))
+                
+                # Resize for Excel (max 100px width)
+                max_width = 100
+                if pil_img.width > max_width:
+                    ratio = max_width / pil_img.width
+                    new_height = int(pil_img.height * ratio)
+                    pil_img = pil_img.resize((max_width, new_height), PILImage.Resampling.LANCZOS)
+                
+                # Save to bytes
+                img_buffer = BytesIO()
+                pil_img.save(img_buffer, format='PNG')
+                img_buffer.seek(0)
+                
+                # Add to Excel
+                xl_img = XLImage(img_buffer)
+                ws.add_image(xl_img, f'H{row_idx}')
+                ws.row_dimensions[row_idx].height = 75  # Set row height for image
+            except Exception as e:
+                ws.cell(row=row_idx, column=8, value="Error loading image")
+        
+        # Embed Gross Photo
+        if entry.get("grossPhoto"):
+            try:
+                img_data = base64.b64decode(entry["grossPhoto"])
+                pil_img = PILImage.open(BytesIO(img_data))
+                
+                max_width = 100
+                if pil_img.width > max_width:
+                    ratio = max_width / pil_img.width
+                    new_height = int(pil_img.height * ratio)
+                    pil_img = pil_img.resize((max_width, new_height), PILImage.Resampling.LANCZOS)
+                
+                img_buffer = BytesIO()
+                pil_img.save(img_buffer, format='PNG')
+                img_buffer.seek(0)
+                
+                xl_img = XLImage(img_buffer)
+                ws.add_image(xl_img, f'I{row_idx}')
+            except Exception as e:
+                ws.cell(row=row_idx, column=9, value="Error loading image")
+        
+        # Status column
+        ws.cell(row=row_idx, column=10, value="Saved" if entry["saved"] else "Draft")
+        ws.cell(row=row_idx, column=11, value=entry["createdAt"] or "")
     
-    for i, width in enumerate([8, 20, 14, 14, 14, 14, 16, 16, 12, 22], 1):
+    # Set column widths
+    widths = [8, 14, 18, 12, 12, 12, 12, 18, 18, 12, 22]
+    for i, width in enumerate(widths, 1):
         ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = width
+    
+    # Style headers
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="17202A", end_color="17202A", fill_type="solid")
+    for col in range(1, len(headers) + 1):
+        cell = ws.cell(row=1, column=col)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill(start_color="17202A", end_color="17202A", fill_type="solid")
+        cell.alignment = Alignment(horizontal="center")
     
     buffer = BytesIO()
     wb.save(buffer)
