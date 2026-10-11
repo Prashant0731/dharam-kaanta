@@ -62,7 +62,7 @@ const App: FC = () => {
   };
 
   return (
-    <BrowserRouter basename="/TL">
+    <BrowserRouter basename="/dharam-kaanta">
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex">
         {/* Mobile sidebar overlay */}
         {sidebarOpen && (
