@@ -15,6 +15,15 @@ try:
 except ImportError:
     USE_POSTGRES = False
 
+# Google Sheets Sync
+try:
+    from sheets_sync import get_sheets_sync, init_sheets_sync
+    SHEETS_SYNC_AVAILABLE = True
+except ImportError:
+    SHEETS_SYNC_AVAILABLE = False
+    get_sheets_sync = None
+    init_sheets_sync = None
+
 import sqlite3
 import uuid
 import json
@@ -570,6 +579,83 @@ def export_word(entries, filename):
     
     return send_file(buffer, mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                      as_attachment=True, download_name=f"{filename}.docx")
+
+# Initialize Google Sheets Sync on startup
+if SHEETS_SYNC_AVAILABLE:
+    init_sheets_sync()
+
+# Google Sheets Sync Endpoints
+@app.route("/api/v1/sheets/sync", methods=["POST"])
+def sync_to_sheets():
+    """Sync all entries to Google Sheets"""
+    if not SHEETS_SYNC_AVAILABLE:
+        return jsonify({"success": False, "error": "Google Sheets sync not available"}), 503
+    
+    sheets_sync = get_sheets_sync()
+    if not sheets_sync or not sheets_sync.is_enabled():
+        return jsonify({"success": False, "error": "Google Sheets sync not configured. Set GOOGLE_SHEETS_CREDENTIALS and GOOGLE_SHEETS_SPREADSHEET_ID environment variables."}), 503
+    
+    # Get all entries from database
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    if DB_TYPE == "postgres":
+        cursor.execute("SELECT * FROM entries ORDER BY created_at DESC")
+    else:
+        cursor.execute("SELECT * FROM entries ORDER BY created_at DESC")
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    # Convert to list of dicts
+    entries = [row_to_dict(r) for r in rows]
+    
+    # Sync to sheets
+    result = sheets_sync.sync_all(entries)
+    
+    if result.get('success'):
+        return jsonify(result), 200
+    else:
+        return jsonify(result), 500
+
+
+@app.route("/api/v1/sheets/status", methods=["GET"])
+def sheets_status():
+    """Get Google Sheets sync status"""
+    if not SHEETS_SYNC_AVAILABLE:
+        return jsonify({"enabled": False, "error": "Google Sheets sync not available"})
+    
+    sheets_sync = get_sheets_sync()
+    if not sheets_sync:
+        return jsonify({"enabled": False, "error": "Not initialized"})
+    
+    return jsonify({
+        "enabled": sheets_sync.is_enabled(),
+        "spreadsheet_id": sheets_sync.spreadsheet_id,
+        "sheet_name": sheets_sync.sheet_name
+    })
+
+
+@app.route("/api/v1/sheets/test", methods=["POST"])
+def test_sheets_connection():
+    """Test Google Sheets connection"""
+    if not SHEETS_SYNC_AVAILABLE:
+        return jsonify({"success": False, "error": "Google Sheets sync not available"}), 503
+    
+    sheets_sync = get_sheets_sync()
+    if not sheets_sync or not sheets_sync.is_enabled():
+        return jsonify({"success": False, "error": "Google Sheets sync not configured"}), 503
+    
+    # Try to ensure sheet exists
+    try:
+        success = sheets_sync._ensure_sheet_exists()
+        if success:
+            return jsonify({"success": True, "message": "Connection successful, sheet ready"})
+        else:
+            return jsonify({"success": False, "error": "Failed to create/access sheet"}), 500
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 if __name__ == "__main__":
     init_db()

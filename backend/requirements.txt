@@ -6,3 +6,8 @@ fpdf2==2.7.6
 python-docx==1.1.0
 pillow==10.0.0
 psycopg2-binary==2.9.9
+google-auth==2.23.4
+google-auth-oauthlib==1.1.0
+google-auth-httplib2==0.1.1
+google-api-python-client==2.108.0
+googleapis-common-protos==1.63.0

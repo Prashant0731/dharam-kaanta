@@ -2,7 +2,7 @@ import { FC, useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Download, Search, Filter, Truck, Weight, IndianRupee, FileSpreadsheet, FileText, FileType, Printer, 
   ChevronLeft, ChevronRight, Sun, Moon, Monitor, X, ZoomIn, Edit2, Copy, ClipboardCheck, 
-  Shield, User, Calendar, FilePlus 
+  Shield, User, Calendar, FilePlus, Cloud, RefreshCw, AlertCircle 
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Button } from '../components/Button';
@@ -31,6 +31,8 @@ export const DashboardPage: FC = () => {
   const [photoModal, setPhotoModal] = useState<{ src: string; label: string } | null>(null);
   const [editModal, setEditModal] = useState<WeighbridgeEntry | null>(null);
   const [copyToast, setCopyToast] = useState<string | null>(null);
+  const [sheetsSyncLoading, setSheetsSyncLoading] = useState(false);
+  const [sheetsSyncToast, setSheetsSyncToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // Apply theme
   useEffect(() => {
@@ -244,6 +246,81 @@ export const DashboardPage: FC = () => {
     exportWithTotals('excel');
   }, [exportWithTotals]);
 
+  // Google Sheets Sync
+  const syncToGoogleSheets = useCallback(async () => {
+    if (filteredEntries.length === 0) {
+      setSheetsSyncToast({ message: 'No entries to sync', type: 'error' });
+      setTimeout(() => setSheetsSyncToast(null), 3000);
+      return;
+    }
+    
+    setSheetsSyncLoading(true);
+    setSheetsSyncToast(null);
+    
+    try {
+      const response = await fetch('/api/v1/sheets/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        setSheetsSyncToast({ 
+          message: `Successfully synced ${result.synced} entries to Google Sheets!`, 
+          type: 'success' 
+        });
+      } else {
+        setSheetsSyncToast({ 
+          message: result.error || 'Failed to sync to Google Sheets', 
+          type: 'error' 
+        });
+      }
+    } catch (error) {
+      setSheetsSyncToast({ 
+        message: 'Network error. Please try again.', 
+        type: 'error' 
+      });
+    } finally {
+      setSheetsSyncLoading(false);
+      setTimeout(() => setSheetsSyncToast(null), 5000);
+    }
+  }, [filteredEntries]);
+
+  const testSheetsConnection = useCallback(async () => {
+    setSheetsSyncLoading(true);
+    setSheetsSyncToast(null);
+    
+    try {
+      const response = await fetch('/api/v1/sheets/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        setSheetsSyncToast({ 
+          message: 'Google Sheets connection successful!', 
+          type: 'success' 
+        });
+      } else {
+        setSheetsSyncToast({ 
+          message: result.error || 'Connection test failed', 
+          type: 'error' 
+        });
+      }
+    } catch (error) {
+      setSheetsSyncToast({ 
+        message: 'Network error. Please check your connection.', 
+        type: 'error' 
+      });
+    } finally {
+      setSheetsSyncLoading(false);
+      setTimeout(() => setSheetsSyncToast(null), 5000);
+    }
+  }, []);
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Header */}
@@ -324,22 +401,37 @@ export const DashboardPage: FC = () => {
                 <Button onClick={() => setShowExportMenu(!showExportMenu)} variant="secondary">
                   <Download className="w-4 h-4 mr-1" /> Export
                 </Button>
-                {showExportMenu && (
-                  <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-20">
-                    <button onClick={handleBulkExport} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2">
-                      <FilePlus className="w-4 h-4 text-green-600" /> Export All (with Totals)
-                    </button>
-                    <button onClick={() => exportWithTotals('excel')} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2">
-                      <FileSpreadsheet className="w-4 h-4 text-green-600" /> Excel (.xlsx)
-                    </button>
-                    <button onClick={() => exportWithTotals('pdf')} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-red-600" /> PDF (.pdf)
-                    </button>
-                    <button onClick={() => exportWithTotals('word')} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2">
-                      <FileType className="w-4 h-4 text-blue-600" /> Word (.docx)
-                    </button>
-                  </div>
-                )}
+{showExportMenu && (
+                <div className="absolute right-0 mt-1 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-20">
+                  <button onClick={handleBulkExport} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2">
+                    <FilePlus className="w-4 h-4 text-green-600" /> Export All (with Totals)
+                  </button>
+                  <button onClick={() => exportWithTotals('excel')} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2">
+                    <FileSpreadsheet className="w-4 h-4 text-green-600" /> Excel (.xlsx)
+                  </button>
+                  <button onClick={() => exportWithTotals('pdf')} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-red-600" /> PDF (.pdf)
+                  </button>
+                  <button onClick={() => exportWithTotals('word')} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2">
+                    <FileType className="w-4 h-4 text-blue-600" /> Word (.docx)
+                  </button>
+                  <hr className="my-1 border-gray-200 dark:border-gray-700" />
+                  <button onClick={testSheetsConnection} disabled={sheetsSyncLoading} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2">
+                    <Cloud className="w-4 h-4 text-purple-600" /> Test Google Sheets Connection
+                  </button>
+                  <button onClick={syncToGoogleSheets} disabled={sheetsSyncLoading || filteredEntries.length === 0} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 opacity-100">
+                    {sheetsSyncLoading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-blue-600" /> Syncing...
+                      </>
+                    ) : (
+                      <>
+                        <Cloud className="w-4 h-4 text-blue-600" /> Sync to Google Sheets
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
               </div>
               <Button onClick={copyAllRecords} variant="secondary">
                 <Copy className="w-4 h-4 mr-1" /> Copy All
@@ -572,6 +664,19 @@ export const DashboardPage: FC = () => {
         <div className="fixed bottom-4 right-4 z-50 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg animate-slide-in">
           <ClipboardCheck className="w-5 h-5 inline mr-2" />
           {copyToast}
+        </div>
+      )}
+
+      {/* Sheets Sync Toast */}
+      {sheetsSyncToast && (
+        <div className="fixed bottom-4 right-4 z-50 px-4 py-2 rounded-lg shadow-lg animate-slide-in flex items-center gap-2"
+             style={{ backgroundColor: sheetsSyncToast.type === 'success' ? '#16a34a' : '#dc2626' }}>
+          {sheetsSyncToast.type === 'success' ? (
+            <ClipboardCheck className="w-5 h-5" />
+          ) : (
+            <AlertCircle className="w-5 h-5" />
+          )}
+          {sheetsSyncToast.message}
         </div>
       )}
 
