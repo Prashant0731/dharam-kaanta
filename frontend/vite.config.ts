@@ -9,7 +9,7 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-  base: '/TL/',
+  base: '/dharam-kaanta/',
   build: {
     outDir: 'dist',
     sourcemap: true,
