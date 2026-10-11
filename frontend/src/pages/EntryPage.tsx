@@ -337,7 +337,7 @@ export const EntryPage: FC = () => {
       <div className="px-4 pb-4 overflow-hidden" style={{maxHeight: 'calc(100vh - 200px)'}}>
         <div className="overflow-x-auto" style={{height: 'calc(100vh - 200px)', overflowY: 'auto'}}>
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700" ref={tableRef}>
-            <thead className="bg-gray-900 text-white sticky top-0 z-20">
+<thead className="bg-gray-900 text-white sticky top-0 z-20">
               <tr>
                 <th className="px-2 py-2 text-left text-xs font-medium uppercase tracking-wider sticky left-0 bg-gray-900 z-30 w-8 min-w-[40px]">#</th>
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider sticky left-0 bg-gray-900 z-20 min-w-[120px]">Tyre Type</th>
@@ -346,6 +346,7 @@ export const EntryPage: FC = () => {
                 <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider w-20 min-w-[80px]">Gross (kg)</th>
                 <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider text-green-300 w-20 min-w-[80px]">Net (kg)</th>
                 <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider text-red-300 w-20 min-w-[80px]">Amount</th>
+                <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider w-20 min-w-[80px]">Status</th>
                 <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider w-24 min-w-[96px]">Vehicle Photo</th>
                 <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider w-24 min-w-[96px]">Gross Photo</th>
                 <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider w-28 min-w-[112px]">Action</th>
@@ -354,7 +355,7 @@ export const EntryPage: FC = () => {
             <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
               {sortedEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-12 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={11} className="px-4 py-12 text-center text-gray-500 dark:text-gray-400">
                     No entries yet. Click "Add Row" to start.
                   </td>
                 </tr>
@@ -402,10 +403,19 @@ export const EntryPage: FC = () => {
                       <Input
                         type="number"
                         value={entry.gross}
-                        onChange={(e) => updateEntry(entries.findIndex(e => e.id === entry.id), 'gross', e.target.value)}
+                        onChange={(e) => {
+                          const tareValue = entry.tare || '0';
+                          const grossValue = e.target.value;
+                          if (Number(grossValue) < Number(tareValue)) {
+                            // Auto-correct gross to be at least tare
+                            updateEntry(entries.findIndex(e => e.id === entry.id), 'gross', tareValue);
+                          } else {
+                            updateEntry(entries.findIndex(e => e.id === entry.id), 'gross', grossValue);
+                          }
+                        }}
                         placeholder="kg"
                         className="text-center text-sm w-20 mx-auto"
-                        min="0"
+                        min={entry.tare || 0}
                         step="1"
                       />
                     </td>
@@ -416,6 +426,14 @@ export const EntryPage: FC = () => {
                     {/* Amount */}
                     <td className="px-3 py-2 whitespace-nowrap text-center text-red-700 dark:text-red-400 font-bold text-sm w-20 min-w-[80px]">
                       {entry.money <= 0 ? '-' : entry.money.toFixed(2)}
+                    </td>
+                    {/* Validation Warning */}
+                    <td className="px-3 py-2 whitespace-nowrap text-center w-24 min-w-[96px]">
+                      {Number(entry.gross) < Number(entry.tare || 0) && (
+                        <span className="text-xs text-orange-600 dark:text-orange-400" title="Gross weight cannot be less than tare">
+                          {'⚠ Gross < Tare'}
+                        </span>
+                      )}
                     </td>
                     {/* Vehicle Photo */}
                     <td className="px-3 py-2 whitespace-nowrap text-center w-28 min-w-[112px]">

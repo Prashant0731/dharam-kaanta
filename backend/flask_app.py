@@ -119,7 +119,10 @@ def init_db():
 def calc_net_money(tare, gross):
     t = float(tare) if tare else 0
     g = float(gross) if gross else 0
-    net = g - t if (t or g) else 0
+    # Net weight should not be negative - gross should be >= tare
+    if g < t:
+        g = t  # Cap gross at tare to prevent negative net
+    net = g - t
     money = round(net / 5, 2) if net else 0
     return net, money
 
@@ -316,7 +319,13 @@ def get_stats():
     cursor = conn.cursor()
     total = cursor.execute("SELECT COUNT(*) FROM entries").fetchone()[0]
     saved = cursor.execute("SELECT COUNT(*) FROM entries WHERE saved = %s", (True if DB_TYPE == "postgres" else 1,)).fetchone()[0]
-    today = cursor.execute("SELECT COUNT(*) FROM entries WHERE DATE(created_at) = CURRENT_DATE").fetchone()[0]
+    
+    # Use DATE() for cross-database compatibility
+    if DB_TYPE == "postgres":
+        today = cursor.execute("SELECT COUNT(*) FROM entries WHERE DATE(created_at) = CURRENT_DATE").fetchone()[0]
+    else:
+        today = cursor.execute("SELECT COUNT(*) FROM entries WHERE DATE(created_at) = DATE('now')").fetchone()[0]
+    
     total_weight = cursor.execute("SELECT COALESCE(SUM(net), 0) FROM entries").fetchone()[0]
     total_revenue = cursor.execute("SELECT COALESCE(SUM(money), 0) FROM entries").fetchone()[0]
     conn.close()
