@@ -306,4 +306,5 @@ TL/
 
 ## 📝 License
 
-MIT License - Free to use and modify.
+MIT License - Free to use and modify.#   D e p l o y   t r i g g e r  
+ 
