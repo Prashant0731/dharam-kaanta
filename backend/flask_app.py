@@ -8,9 +8,9 @@ from datetime import datetime, date
 from io import BytesIO
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=["https://prashant0731.github.io"])
 
-DB_PATH = "dharam_kaanta.db"
+DB_PATH = "/data/dharam_kaanta.db"
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
