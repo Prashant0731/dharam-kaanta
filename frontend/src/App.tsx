@@ -67,8 +67,9 @@ const App: FC = () => {
         {/* Mobile sidebar overlay */}
         {sidebarOpen && (
           <div 
-            className="fixed inset-0 z-30 bg-black/50 lg:hidden"
+            className="fixed inset-0 z-40 bg-black/50 lg:hidden"
             onClick={() => setSidebarOpen(false)}
+            style={{ WebkitOverflowScrolling: 'touch' }}
           />
         )}
 
@@ -77,7 +78,9 @@ const App: FC = () => {
           'fixed inset-y-0 left-0 z-50 w-64 bg-gray-900 text-white transform transition-transform duration-300',
           'lg:translate-x-0',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full',
-          'will-change-transform'
+          'will-change-transform',
+          '-webkit-transform: translateX(-100%)',
+          'backface-visibility: hidden'
         )}>
           <div className="flex flex-col h-full">
             <div className="flex items-center justify-between h-16 px-4 border-b border-gray-700">
@@ -90,7 +93,7 @@ const App: FC = () => {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
+            <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
               {navigation.map((item) => (
                 <RouteLink key={item.name} to={item.to} icon={item.icon}>
                   {item.name}
@@ -119,6 +122,7 @@ const App: FC = () => {
             className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700"
             onClick={() => setSidebarOpen(true)}
             aria-label="Open sidebar"
+            style={{ WebkitTapHighlightColor: 'transparent' }}
           >
             <Menu className="w-6 h-6" />
           </button>
