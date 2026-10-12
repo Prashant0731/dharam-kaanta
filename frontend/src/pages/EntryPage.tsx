@@ -1,5 +1,5 @@
 import { FC, useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import { Save, RotateCcw, Download, FileSpreadsheet, FileText, FileType, Printer, Plus, Sun, Moon, Monitor, Search, Shield, User } from 'lucide-react';
+import { Save, RotateCcw, FileSpreadsheet, FileText, FileType, Printer, Plus, Sun, Moon, Monitor, Search, Shield, User } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
@@ -9,8 +9,6 @@ import { WeighbridgeEntry, UserRole } from '../types';
 import { exportAll } from '../services/export';
 import { localStorageApi } from '../services/api';
 import { api } from '../services/api';
-
-const MAX_ROWS = 50;
 
 // Default tyre types
 const DEFAULT_TYRE_TYPES = ['Radial', 'Bias', 'Tube', 'Tubeless', 'Other'];
@@ -32,13 +30,9 @@ const createEmptyEntry = (sno: number): WeighbridgeEntry => ({
 });
 
 export const EntryPage: FC = () => {
-  const [entries, setEntries] = useState<WeighbridgeEntry[]>(() => {
-    const saved = localStorageApi.getEntries();
-    if (saved.length > 0) return saved;
-    return Array.from({ length: MAX_ROWS }, (_, i) => createEmptyEntry(i + 1));
-  });
+  const [entries, setEntries] = useState<WeighbridgeEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
-  const [showExportMenu, setShowExportMenu] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(() => {
     const saved = localStorage.getItem('theme') as 'light' | 'dark' | 'system' | null;
     return saved || 'system';
@@ -49,7 +43,7 @@ export const EntryPage: FC = () => {
     return saved || 'operator';
   });
   const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+const [dateTo, setDateTo] = useState('');
   const [showDateFilter, setShowDateFilter] = useState(false);
   const tableRef = useRef<HTMLTableElement>(null);
 
@@ -64,6 +58,44 @@ export const EntryPage: FC = () => {
     }
     localStorage.setItem('theme', theme);
   }, [theme]);
+
+  // Load entries from API on initial load
+  useEffect(() => {
+    const loadEntries = async () => {
+      try {
+        setIsLoading(true);
+        const saved = localStorageApi.getEntries();
+        if (saved.length > 0) {
+          setEntries(saved);
+        } else {
+          try {
+            const apiEntries = await api.getEntries();
+            setEntries(apiEntries);
+            localStorageApi.saveEntries(apiEntries);
+          } catch (error) {
+            console.error('Failed to load entries from API:', error);
+            // Fallback to localStorage
+            const saved = localStorageApi.getEntries();
+            if (saved.length > 0) {
+              setEntries(saved);
+            } else {
+              setEntries(Array.from({ length: 50 }, (_, i) => createEmptyEntry(i + 1)));
+            }
+          }
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadEntries();
+  }, []);
+
+  // Sync entries to localStorage whenever entries change
+  useEffect(() => {
+    if (!isLoading) {
+      localStorageApi.saveEntries(entries);
+    }
+  }, [entries]);
 
   // Filter entries based on search term and date range
   const filteredEntries = useMemo(() => {
@@ -96,12 +128,12 @@ export const EntryPage: FC = () => {
     const t = Number(tare) || 0;
     const g = Number(gross) || 0;
     if (!t && !g) return 0;
-    return g - t;
+    return t - g;  // Tare - Gross = Net (as requested)
   };
 
   const calcMoney = (net: number): number => {
-    if (net <= 0) return 0;
-    return Number((net / 5).toFixed(2));
+    // Use absolute value for money calculation (rate is per 5kg)
+    return Number((Math.abs(net) / 5).toFixed(2));
   };
 
   const updateEntry = useCallback((index: number, field: keyof WeighbridgeEntry, value: string | number) => {
@@ -130,6 +162,10 @@ export const EntryPage: FC = () => {
   }, []);
 
   const saveEntry = useCallback(async (index: number) => {
+    if (userRole !== 'admin') {
+      showToast('Permission denied: Only admins can save entries', 'error');
+      return;
+    }
     const actualIndex = entries.findIndex(e => e.id === sortedEntries[index]?.id);
     if (actualIndex === -1) return;
 
@@ -152,9 +188,13 @@ export const EntryPage: FC = () => {
       showToast(`Row ${index + 1} saved!`, 'success');
       return newEntries;
     });
-  }, [entries, sortedEntries, persistEntries]);
+  }, [entries, sortedEntries]);
 
   const clearEntry = useCallback((index: number) => {
+    if (userRole !== 'admin') {
+      showToast('Permission denied: Only admins can clear entries', 'error');
+      return;
+    }
     const actualIndex = entries.findIndex(e => e.id === sortedEntries[index]?.id);
     if (actualIndex === -1) return;
 
@@ -187,7 +227,6 @@ export const EntryPage: FC = () => {
     }
     exportAll(savedEntries, format);
     showToast(`Exported to ${format.toUpperCase()}`, 'success');
-    setShowExportMenu(false);
   };
 
   const handlePrint = () => {
@@ -195,9 +234,13 @@ export const EntryPage: FC = () => {
   };
 
   const handleAddRow = () => {
+    if (userRole !== 'admin') {
+      showToast('Permission denied: Only admins can add rows', 'error');
+      return;
+    }
     setEntries(prev => {
       const hasEmpty = prev.some(e => e.vehicle === '' && e.tare === '' && e.gross === '');
-      if (hasEmpty || prev.length >= MAX_ROWS) return prev;
+      if (hasEmpty || prev.length >= 50) return prev;
       return [...prev, createEmptyEntry(prev.length + 1)];
     });
   };
@@ -216,12 +259,6 @@ export const EntryPage: FC = () => {
     return <Monitor className="w-4 h-4" />;
   };
 
-  const getThemeLabel = () => {
-    if (theme === 'light') return 'Light';
-    if (theme === 'dark') return 'Dark';
-    return 'System';
-  };
-
   const cycleRole = () => {
     setUserRole(prev => {
       if (prev === 'operator') {
@@ -233,296 +270,276 @@ export const EntryPage: FC = () => {
     });
   };
 
-  const getRoleIcon = () => userRole === 'admin' ? <Shield className="w-4 h-4" /> : <User className="w-4 h-4" />;
-  const getRoleLabel = () => userRole === 'admin' ? 'Admin' : 'Operator';
+  const getRoleIcon = () => {
+    const role = localStorage.getItem('userRole') as UserRole | null || 'operator';
+    return role === 'admin' ? <Shield className="w-4 h-4" /> : <User className="w-4 h-4" />;
+  };
+
+  const getRoleLabel = () => {
+    const role = localStorage.getItem('userRole') as UserRole | null || 'operator';
+    return role === 'admin' ? 'Admin' : 'Operator';
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-green-500 border-t-transparent"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950" style={{minHeight: '100vh'}}>
-      {/* Header */}
-      <header className="bg-gray-900 text-white px-4 py-3 shadow-sm sticky top-0 z-50">
-        <div className="max-w-full mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <h1 className="text-xl font-bold">⚖️ Dharam Kaanta</h1>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-400 hidden sm:inline">{getThemeLabel()}</span>
-            <Button variant="ghost" size="sm" onClick={cycleTheme} aria-label="Toggle theme">
-              {getThemeIcon()}
-            </Button>
-            <span className="text-sm text-gray-400 hidden sm:inline">{getRoleLabel()}</span>
-            <Button variant="ghost" size="sm" onClick={cycleRole} aria-label="Toggle role">
-              {getRoleIcon()}
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      {/* Toolbar */}
-      <div className="px-4 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 sticky top-14 z-40">
-        <div className="max-w-full mx-auto flex flex-wrap items-center gap-3">
-          <Button onClick={handlePrint} variant="ghost" size="sm">
-            <Printer className="w-4 h-4 mr-1" /> Print
-          </Button>
-          
-          {/* Vehicle Search */}
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search vehicle..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
-            />
-          </div>
-          
-          {/* Date Range Filter */}
-          <Button variant="ghost" size="sm" onClick={() => setShowDateFilter(!showDateFilter)} className="sm:hidden">
-            <span className="w-4 h-4">📅</span> Date
-          </Button>
-          
-          <div className="relative">
-            <Button onClick={() => setShowExportMenu(!showExportMenu)} variant="secondary" size="sm">
-              <Download className="w-4 h-4 mr-1" /> Export
-            </Button>
-            {showExportMenu && (
-              <div className="absolute right-0 mt-1 w-40 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50">
-                <button onClick={() => handleExport('excel')} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2">
-                  <FileSpreadsheet className="w-4 h-4 text-green-600" /> Excel (.xlsx)
-                </button>
-                <button onClick={() => handleExport('pdf')} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-red-600" /> PDF (.pdf)
-                </button>
-                <button onClick={() => handleExport('word')} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2">
-                  <FileType className="w-4 h-4 text-blue-600" /> Word (.docx)
-                </button>
-              </div>
-            )}
-          </div>
-
-          <Button onClick={handleAddRow} variant="secondary" size="sm" className="ml-auto">
-            <Plus className="w-4 h-4 mr-1" /> Add Row
-          </Button>
-        </div>
-
-        {/* Date Range Filter Row */}
-        {showDateFilter && (
-          <div className="mt-3 flex flex-col sm:flex-row gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-            <div className="flex-1">
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">From Date</label>
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
-              />
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      <header className="sticky top-0 z-30 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-4">
+              <h1 className="text-xl font-bold text-gray-900 dark:text-white">⚖️ Dharam Kaanta</h1>
+              <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                Weighbridge Entry
+              </span>
             </div>
-            <div className="flex-1">
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">To Date</label>
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
-              />
-            </div>
-            <div className="flex items-end">
-              <Button variant="secondary" size="sm" onClick={() => { setDateFrom(''); setDateTo(''); }}>
-                Clear
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={cycleTheme} aria-label="Cycle theme">
+                {getThemeIcon()}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={cycleRole} aria-label="Toggle role">
+                {getRoleIcon()}
+                <span className="ml-1 text-xs hidden sm:inline">{getRoleLabel()}</span>
               </Button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+        
+        {/* Search and Filter Bar */}
+        <div className="px-4 sm:px-6 lg:px-8 py-3 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex flex-col sm:flex-row gap-3 max-w-7xl mx-auto">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                type="text"
+                placeholder="Search by vehicle number..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <Button variant="secondary" size="sm" onClick={() => setShowDateFilter(!showDateFilter)}>
+              <span className="flex items-center gap-1">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Filter
+              </span>
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="secondary" size="sm" onClick={handleExport.bind(null, 'excel')}>
+                <FileSpreadsheet className="w-4 h-4 mr-1" />
+                Excel
+              </Button>
+              <Button variant="secondary" size="sm" onClick={handleExport.bind(null, 'pdf')}>
+                <FileText className="w-4 h-4 mr-1" />
+                PDF
+              </Button>
+              <Button variant="secondary" size="sm" onClick={handleExport.bind(null, 'word')}>
+                <FileType className="w-4 h-4 mr-1" />
+                Word
+              </Button>
+              <Button variant="secondary" size="sm" onClick={handlePrint}>
+                <Printer className="w-4 h-4 mr-1" />
+                Print
+              </Button>
+            </div>
+          </div>
 
-      {/* Table Container - Responsive */}
-      <div className="px-4 pb-4 overflow-hidden" style={{maxHeight: 'calc(100vh - 200px)'}}>
-        <div className="overflow-x-auto" style={{height: 'calc(100vh - 200px)', overflowY: 'auto'}}>
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700" ref={tableRef}>
-<thead className="bg-gray-900 text-white sticky top-0 z-20">
+          {/* Date Filter */}
+          {showDateFilter && (
+            <div className="mt-3 flex flex-col sm:flex-row gap-3 max-w-7xl mx-auto">
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">From</label>
+                <Input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">To</label>
+                <Input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => { setDateFrom(''); setDateTo(''); }}>
+                Clear
+              </Button>
+            </div>
+          )}
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1200px] text-sm" ref={tableRef}>
+            <thead className="bg-gray-50 dark:bg-gray-800 sticky top-16 z-10">
               <tr>
-                <th className="px-2 py-2 text-left text-xs font-medium uppercase tracking-wider sticky left-0 bg-gray-900 z-30 w-8 min-w-[40px]">#</th>
-                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider sticky left-0 bg-gray-900 z-20 min-w-[120px]">Tyre Type</th>
-                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider sticky left-0 bg-gray-900 z-20 min-w-[120px]">Vehicle No.</th>
-                <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider w-20 min-w-[80px]">Tare (kg)</th>
-                <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider w-20 min-w-[80px]">Gross (kg)</th>
-                <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider text-green-300 w-20 min-w-[80px]">Net (kg)</th>
-                <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider text-red-300 w-20 min-w-[80px]">Amount</th>
-                <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider w-20 min-w-[80px]">Status</th>
-                <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider w-24 min-w-[96px]">Vehicle Photo</th>
-                <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider w-24 min-w-[96px]">Gross Photo</th>
-                <th className="px-3 py-2 text-center text-xs font-medium uppercase tracking-wider w-28 min-w-[112px]">Action</th>
+                <th className="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-400 w-10">S.No</th>
+                <th className="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-400 w-40">Tyre Type</th>
+                <th className="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-400 w-48">Vehicle No</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-500 dark:text-gray-400 w-32">Tare (kg)</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-500 dark:text-gray-400 w-32">Gross (kg)</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-500 dark:text-gray-400 w-32">Net (kg)</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-500 dark:text-gray-400 w-24">Money</th>
+                <th className="px-3 py-2 text-center font-medium text-gray-500 dark:text-gray-400 w-32">Vehicle Photo</th>
+                <th className="px-3 py-2 text-center font-medium text-gray-500 dark:text-gray-400 w-32">Gross Photo</th>
+                <th className="px-3 py-2 text-center font-medium text-gray-500 dark:text-gray-400 w-24">Saved</th>
+                <th className="px-3 py-2 text-center font-medium text-gray-500 dark:text-gray-400 w-32">Actions</th>
               </tr>
             </thead>
-            <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
-              {sortedEntries.length === 0 ? (
-                <tr>
-                  <td colSpan={11} className="px-4 py-12 text-center text-gray-500 dark:text-gray-400">
-                    No entries yet. Click "Add Row" to start.
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+              {sortedEntries.map((entry, displayIndex) => (
+                <tr key={entry.id} className={clsx(
+                  'transition-colors',
+                  entry.saved ? 'bg-green-50 dark:bg-green-900/20' : 'bg-white dark:bg-gray-950',
+                  userRole !== 'admin' ? 'opacity-75' : ''
+                )}>
+                  <td className="px-3 py-2 text-gray-900 dark:text-white font-medium">{entry.sno}</td>
+                  <td className="px-3 py-2">
+                    <select
+                      value={entry.tyreType}
+                      onChange={(e) => updateEntry(displayIndex, 'tyreType', e.target.value)}
+                      disabled={userRole !== 'admin'}
+                      className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent disabled:opacity-50"
+                    >
+                      {DEFAULT_TYRE_TYPES.map(type => (
+                        <option key={type} value={type}>{type}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="px-3 py-2">
+                    <Input
+                      type="text"
+                      value={entry.vehicle}
+                      onChange={(e) => updateEntry(displayIndex, 'vehicle', e.target.value.toUpperCase())}
+                      placeholder="Vehicle No"
+                      disabled={userRole !== 'admin'}
+                      className="uppercase"
+                    />
+                  </td>
+                  <td className="px-3 py-2">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={entry.tare}
+                      onChange={(e) => updateEntry(displayIndex, 'tare', e.target.value)}
+                      placeholder="Tare"
+                      disabled={userRole !== 'admin'}
+                      inputMode="decimal"
+                    />
+                  </td>
+                  <td className="px-3 py-2">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={entry.gross}
+                      onChange={(e) => updateEntry(displayIndex, 'gross', e.target.value)}
+                      placeholder="Gross"
+                      disabled={userRole !== 'admin'}
+                      inputMode="decimal"
+                    />
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono font-medium text-gray-900 dark:text-white">
+                    {entry.net !== 0 ? entry.net.toFixed(2) : '-'}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono font-medium text-green-600 dark:text-green-400">
+                    {entry.money !== 0 ? entry.money.toFixed(2) : '-'}
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <PhotoCapture
+                      value={entry.vehiclePhoto}
+                      onChange={(photo) => updateEntry(displayIndex, 'vehiclePhoto', photo)}
+                      label="Vehicle"
+                      disabled={userRole !== 'admin'}
+                    />
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <PhotoCapture
+                      value={entry.grossPhoto}
+                      onChange={(photo) => updateEntry(displayIndex, 'grossPhoto', photo)}
+                      label="Gross"
+                      disabled={userRole !== 'admin'}
+                    />
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <span className={clsx(
+                      'inline-flex items-center px-2 py-1 rounded-full text-xs font-medium',
+                      entry.saved 
+                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
+                        : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
+                    )}>
+                      {entry.saved ? 'Saved' : 'Draft'}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      {userRole === 'admin' && (
+                        <>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => saveEntry(displayIndex)}
+                            disabled={entry.saved}
+                            aria-label="Save entry"
+                            className="text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20"
+                          >
+                            <Save className="w-4 h-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => clearEntry(displayIndex)}
+                            aria-label="Clear entry"
+                            className="text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800"
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
-              ) : (
-                sortedEntries.map((entry, displayIndex) => (
-                  <tr key={entry.id} className={clsx('hover:bg-gray-50 dark:hover:bg-gray-800', entry.saved && 'bg-green-50 dark:bg-green-900/20')}>
-                    <td className="px-2 py-2 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100 sticky left-0 bg-inherit z-20 w-8 min-w-[40px]">
-                      {displayIndex + 1}
-                    </td>
-                    {/* Tyre Type - First Column */}
-                    <td className="px-3 py-2 whitespace-nowrap sticky left-0 bg-inherit z-10 min-w-[140px] max-w-[180px]">
-                      <select
-                        value={entry.tyreType}
-                        onChange={(e) => updateEntry(entries.findIndex(e => e.id === entry.id), 'tyreType', e.target.value)}
-                        disabled={userRole !== 'admin' && entry.saved}
-                        className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {DEFAULT_TYRE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                        <option value="Other">Other...</option>
-                      </select>
-                    </td>
-                    {/* Vehicle Number */}
-                    <td className="px-3 py-2 whitespace-nowrap sticky left-0 bg-inherit z-10 min-w-[140px] max-w-[180px]">
-                      <Input
-                        value={entry.vehicle}
-                        onChange={(e) => updateEntry(entries.findIndex(e => e.id === entry.id), 'vehicle', e.target.value)}
-                        placeholder="RJ14AB1234"
-                        className="text-sm"
-                      />
-                    </td>
-                    {/* Tare Weight */}
-                    <td className="px-3 py-2 whitespace-nowrap text-center w-20 min-w-[80px]">
-                      <Input
-                        type="number"
-                        value={entry.tare}
-                        onChange={(e) => updateEntry(entries.findIndex(e => e.id === entry.id), 'tare', e.target.value)}
-                        placeholder="kg"
-                        className="text-center text-sm w-20 mx-auto"
-                        min="0"
-                        step="1"
-                      />
-                    </td>
-                    {/* Gross Weight */}
-                    <td className="px-3 py-2 whitespace-nowrap text-center w-20 min-w-[80px]">
-                      <Input
-                        type="number"
-                        value={entry.gross}
-                        onChange={(e) => {
-                          const tareValue = entry.tare || '0';
-                          const grossValue = e.target.value;
-                          if (Number(grossValue) < Number(tareValue)) {
-                            // Auto-correct gross to be at least tare
-                            updateEntry(entries.findIndex(e => e.id === entry.id), 'gross', tareValue);
-                          } else {
-                            updateEntry(entries.findIndex(e => e.id === entry.id), 'gross', grossValue);
-                          }
-                        }}
-                        placeholder="kg"
-                        className="text-center text-sm w-20 mx-auto"
-                        min={entry.tare || 0}
-                        step="1"
-                      />
-                    </td>
-                    {/* Net Weight */}
-                    <td className="px-3 py-2 whitespace-nowrap text-center text-green-700 dark:text-green-400 font-bold text-sm w-20 min-w-[80px]">
-                      {entry.net <= 0 ? '-' : entry.net}
-                    </td>
-                    {/* Amount */}
-                    <td className="px-3 py-2 whitespace-nowrap text-center text-red-700 dark:text-red-400 font-bold text-sm w-20 min-w-[80px]">
-                      {entry.money <= 0 ? '-' : entry.money.toFixed(2)}
-                    </td>
-                    {/* Validation Warning */}
-                    <td className="px-3 py-2 whitespace-nowrap text-center w-24 min-w-[96px]">
-                      {Number(entry.gross) < Number(entry.tare || 0) && (
-                        <span className="text-xs text-orange-600 dark:text-orange-400" title="Gross weight cannot be less than tare">
-                          {'⚠ Gross < Tare'}
-                        </span>
-                      )}
-                    </td>
-                    {/* Vehicle Photo */}
-                    <td className="px-3 py-2 whitespace-nowrap text-center w-28 min-w-[112px]">
-                      <PhotoCapture
-                        value={entry.vehiclePhoto}
-                        onChange={(val) => updateEntry(entries.findIndex(e => e.id === entry.id), 'vehiclePhoto', val)}
-                        label="Vehicle Photo"
-                        placeholder="Vehicle"
-                      />
-                    </td>
-                    {/* Gross Photo */}
-                    <td className="px-3 py-2 whitespace-nowrap text-center w-28 min-w-[112px]">
-                      <PhotoCapture
-                        value={entry.grossPhoto}
-                        onChange={(val) => updateEntry(entries.findIndex(e => e.id === entry.id), 'grossPhoto', val)}
-                        label="Gross Photo"
-                        placeholder="Gross"
-                      />
-                    </td>
-                    {/* Action */}
-                    <td className="px-3 py-2 whitespace-nowrap text-center w-32 min-w-[128px]">
-                      <div className="flex items-center justify-center gap-1 flex-wrap">
-                        <Button
-                          onClick={() => saveEntry(displayIndex)}
-                          disabled={entry.saved}
-                          size="sm"
-                          variant={entry.saved ? 'secondary' : 'primary'}
-                          className="min-w-[65px]"
-                        >
-                          <Save className="w-3.5 h-3.5 mr-1" />
-                          {entry.saved ? 'Saved' : 'Save'}
-                        </Button>
-                        <Button
-                          onClick={() => clearEntry(displayIndex)}
-                          variant="danger"
-                          size="sm"
-                          className="min-w-[65px]"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5 mr-1" />
-                          Clear
-                        </Button>
-                      </div>
-                      {entry.saved && (
-                        <p className="text-xs text-green-600 dark:text-green-400 mt-1">✓ Saved</p>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
+              ))}
             </tbody>
           </table>
         </div>
-      </div>
 
-      {/* Summary Footer */}
-      <div className="px-4 py-3 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 sticky bottom-0 z-30">
-        <div className="max-w-full mx-auto grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
-          <div className="text-center p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            <p className="text-gray-500 dark:text-gray-400">Total Entries</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-              {entries.filter(e => e.vehicle || e.tare || e.gross).length}
-            </p>
+        {/* Add Row Button */}
+        {userRole === 'admin' && (
+          <div className="mt-4 flex justify-end">
+            <Button onClick={handleAddRow} className="w-full sm:w-auto">
+              <Plus className="w-4 h-4 mr-2" />
+              Add Row
+            </Button>
           </div>
-          <div className="text-center p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            <p className="text-gray-500 dark:text-gray-400">Saved Entries</p>
-            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-              {entries.filter(e => e.saved).length}
-            </p>
+        )}
+
+        {/* Role Info Banner */}
+        {userRole !== 'admin' && (
+          <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+            <div className="flex items-center gap-3">
+              <User className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+              <div className="text-sm text-blue-800 dark:text-blue-200">
+                <p className="font-medium">Operator Mode (Read-Only)</p>
+                <p>You can view entries but cannot save, clear, or add rows. Switch to Admin mode to edit.</p>
+              </div>
+            </div>
           </div>
-          <div className="text-center p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            <p className="text-gray-500 dark:text-gray-400">Total Net Weight</p>
-            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-              {entries.reduce((sum, e) => sum + (e.net > 0 ? e.net : 0), 0).toFixed(1)} kg
-            </p>
-          </div>
-          <div className="text-center p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            <p className="text-gray-500 dark:text-gray-400">Total Amount</p>
-            <p className="text-2xl font-bold text-red-600 dark:text-red-400">
-              {entries.reduce((sum, e) => sum + (e.money > 0 ? e.money : 0), 0).toFixed(2)}
-            </p>
-          </div>
-          <div className="text-center p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            <p className="text-gray-500 dark:text-gray-400">Today's Entries</p>
-            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-              {entries.filter(e => e.createdAt && new Date(e.createdAt).toDateString() === new Date().toDateString()).length}
-            </p>
-          </div>
-        </div>
-      </div>
+        )}
+      </main>
 
       {toast && (
         <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />

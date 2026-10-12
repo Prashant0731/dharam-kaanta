@@ -64,23 +64,22 @@ const App: FC = () => {
   return (
     <BrowserRouter basename="/dharam-kaanta">
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-        {/* Mobile sidebar overlay */}
+        {/* Mobile sidebar overlay - behind sidebar, above content */}
         {sidebarOpen && (
           <div 
-            className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+            className="fixed inset-0 z-[55] bg-black/50 lg:hidden"
             onClick={() => setSidebarOpen(false)}
             style={{ WebkitOverflowScrolling: 'touch', WebkitTapHighlightColor: 'transparent' }}
           />
         )}
 
-        {/* Sidebar - Fixed positioning with explicit visibility */}
+        {/* Sidebar - Fixed positioning with explicit visibility, z-index above overlay */}
         <aside 
           className={clsx(
-            'fixed inset-y-0 left-0 z-50 w-64 bg-gray-900 text-white',
+            'fixed inset-y-0 left-0 z-[60] w-64 bg-gray-900 text-white',
             'transition-transform duration-300 ease-out',
             'lg:translate-x-0',
             sidebarOpen ? 'translate-x-0' : '-translate-x-full',
-            'duration-300 ease-out',
             'will-change-transform',
             '-webkit-transform: translateX(-100%)',
             '-webkit-backface-visibility: hidden',
@@ -128,20 +127,11 @@ const App: FC = () => {
           </div>
         </aside>
 
-        {/* Mobile sidebar overlay */}
-        {sidebarOpen && (
-          <div 
-            className="fixed inset-0 z-40 bg-black/50 lg:hidden"
-            onClick={() => setSidebarOpen(false)}
-            style={{ WebkitOverflowScrolling: 'touch', WebkitTapHighlightColor: 'transparent' }}
-          />
-        )}
-
         {/* Main content */}
         <main className="flex-1 lg:ml-64 min-h-screen w-full lg:w-auto">
-          {/* Mobile menu button */}
+          {/* Mobile menu button - below sidebar when open, above content */}
           <button 
-            className="lg:hidden fixed top-4 left-4 z-[70] p-3 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700"
+            className="lg:hidden fixed top-4 left-4 z-[50] p-3 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700"
             onClick={() => setSidebarOpen(true)}
             aria-label="Open sidebar"
             style={{ WebkitTapHighlightColor: 'transparent', WebkitTouchCallout: 'none', WebkitUserSelect: 'none' }}

@@ -8,13 +8,15 @@ interface PhotoCaptureProps {
   onChange: (base64: string) => void;
   label?: string;
   placeholder?: string;
+  disabled?: boolean;
 }
 
 export const PhotoCapture: FC<PhotoCaptureProps> = ({ 
   value, 
   onChange, 
   label = 'Photo',
-  placeholder = 'Camera / Gallery'
+  placeholder = 'Camera / Gallery',
+  disabled = false
 }) => {
   const [preview, setPreview] = useState<string | null>(value || null);
   const [compressing, setCompressing] = useState(false);
@@ -74,13 +76,14 @@ export const PhotoCapture: FC<PhotoCaptureProps> = ({
       <div 
         className={clsx(
           'relative w-20 h-20 sm:w-24 sm:h-24 md:w-24 md:h-24 lg:w-28 lg:h-28 rounded-lg border-2 border-dashed',
-          'flex items-center justify-center overflow-hidden cursor-pointer',
+          'flex items-center justify-center overflow-hidden',
           'bg-gray-50 dark:bg-gray-800',
           'border-gray-300 dark:border-gray-600',
           'hover:border-green-400 dark:hover:border-green-500',
-          'transition-colors'
+          'transition-colors',
+          disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
         )}
-        onClick={triggerCameraInput}
+        onClick={disabled ? undefined : triggerCameraInput}
       >
         {preview ? (
           <>
@@ -95,9 +98,10 @@ export const PhotoCapture: FC<PhotoCaptureProps> = ({
               </div>
             )}
             <button
-              onClick={(e) => { e.stopPropagation(); clearPhoto(); }}
+              onClick={(e) => { e.stopPropagation(); if (!disabled) clearPhoto(); }}
               className="absolute top-1 right-1 p-1 bg-red-600 text-white rounded-full hover:bg-red-700 transition-colors"
               aria-label="Remove photo"
+              disabled={disabled}
             >
               <X className="w-4 h-4" />
             </button>
@@ -107,17 +111,19 @@ export const PhotoCapture: FC<PhotoCaptureProps> = ({
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={(e) => { e.stopPropagation(); triggerCameraInput(); }}
+                onClick={(e) => { e.stopPropagation(); if (!disabled) triggerCameraInput(); }}
                 className="p-2 bg-white dark:bg-gray-700 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
                 aria-label="Open camera"
+                disabled={disabled}
               >
                 <Camera className="w-6 h-6" />
               </button>
               <button
                 type="button"
-                onClick={(e) => { e.stopPropagation(); triggerGalleryInput(); }}
+                onClick={(e) => { e.stopPropagation(); if (!disabled) triggerGalleryInput(); }}
                 className="p-2 bg-white dark:bg-gray-700 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
                 aria-label="Open gallery"
+                disabled={disabled}
               >
                 <Image className="w-6 h-6" />
               </button>
