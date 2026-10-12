@@ -63,7 +63,7 @@ const App: FC = () => {
 
   return (
     <BrowserRouter basename="/dharam-kaanta">
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
         {/* Mobile sidebar overlay */}
         {sidebarOpen && (
           <div 
@@ -73,17 +73,27 @@ const App: FC = () => {
           />
         )}
 
-        {/* Sidebar */}
-        <aside className={clsx(
-          'fixed inset-y-0 left-0 z-[60] w-64 bg-gray-900 text-white transform transition-transform duration-300 ease-out',
-          'lg:translate-x-0',
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full',
-          'will-change-transform',
-          '-webkit-transform: translateX(-100%)',
-          '-webkit-backface-visibility: hidden',
-          '-webkit-perspective: 1000',
-          'transform-origin: left center'
-        )}>
+        {/* Sidebar - Fixed positioning with explicit visibility */}
+        <aside 
+          className={clsx(
+            'fixed inset-y-0 left-0 z-50 w-64 bg-gray-900 text-white',
+            'transition-transform duration-300 ease-out',
+            'lg:translate-x-0',
+            sidebarOpen ? 'translate-x-0' : '-translate-x-full',
+            'duration-300 ease-out',
+            'will-change-transform',
+            '-webkit-transform: translateX(-100%)',
+            '-webkit-backface-visibility: hidden',
+            '-webkit-perspective: 1000',
+            'transform-origin: left center'
+          )}
+          style={{
+            // Ensure visibility on all screen sizes
+            display: 'block',
+            visibility: 'visible',
+            opacity: 1,
+          }}
+        >
           <div className="flex flex-col h-full">
             <div className="flex items-center justify-between h-16 px-4 border-b border-gray-700">
               <h1 className="text-xl font-bold">⚖️ Dharam Kaanta</h1>
@@ -117,6 +127,15 @@ const App: FC = () => {
             </div>
           </div>
         </aside>
+
+        {/* Mobile sidebar overlay */}
+        {sidebarOpen && (
+          <div 
+            className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+            style={{ WebkitOverflowScrolling: 'touch', WebkitTapHighlightColor: 'transparent' }}
+          />
+        )}
 
         {/* Main content */}
         <main className="flex-1 lg:ml-64 min-h-screen w-full lg:w-auto">
